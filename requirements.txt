@@ -1,0 +1,52 @@
+# =============================================================================
+# 2D vs 3D posture angles — setup and run (Windows PowerShell)
+# =============================================================================
+#
+# Needs: Python 3.10 or newer, internet for the first install.
+#
+# 1. Open PowerShell in this folder:
+#       cd "path\to\FYP (Comparisions of Models)"
+#
+# 2. Create and activate a virtual environment:
+#       python -m venv .venv
+#       .\.venv\Scripts\Activate.ps1
+#    If activation is blocked, run this first, then activate again:
+#       Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+#
+# 3. Install dependencies:
+#       python -m pip install -U pip
+#       python -m pip install -r requirements.txt
+#
+# 4. Run the app (opens http://127.0.0.1:7860 in the browser, Ctrl+C to stop):
+#       python app.py
+#    Other camera:   python app.py --source 1
+#    Video file:     python app.py --source clip.mp4
+#
+# Optional self-tests:
+#       python angles.py       2D vs 3D geometry
+#       python mapping.py      joint mapping
+#       python extractors.py   webcam + 2D models (q to quit)
+#       python lifters.py      3D lifters
+#       python logger.py       CSV logging
+#
+# Notes:
+#   - third_party/ (model code) and checkpoints/ (weights) must stay in this folder.
+#   - RTMPose weights download once on the first run (~140 MB).
+#   - Recordings are saved as CSV in logs/.
+# =============================================================================
+
+# Core
+numpy>=1.24
+opencv-python>=4.8
+pandas>=2.0
+
+# 2D extractors
+rtmlib                # RTMPose (ONNX), no MMPose install needed
+onnxruntime>=1.17
+mediapipe>=0.10.20    # PoseLandmarker Tasks API
+
+# 3D lifters (VideoPose3D, MotionBERT); CPU build on Windows
+torch>=2.4
+
+# Web app
+gradio>=5.0
