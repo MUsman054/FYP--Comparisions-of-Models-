@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Cloned model repos (re-clone with the commands in lifters.py)
+third_party/
+
+# Downloaded model weights (auto-download on first run)
+checkpoints/
+*.bin
+*.task
+*.onnx
+
+# Experiment output
+logs/

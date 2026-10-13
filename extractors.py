@@ -20,7 +20,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from mapping import coco_to_h36m, mediapipe_to_h36m
+from mapping import coco_to_h36m, mediapipe_to_coco, mediapipe_to_h36m
 
 CHECKPOINT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "checkpoints")
 
@@ -30,6 +30,8 @@ class Pose:
     kpts2d: np.ndarray            # (17, 2) H36M order, pixels
     scores: np.ndarray            # (17,)  confidence per joint
     img_wh: tuple                 # (width, height), needed by lifters for normalization
+    coco2d: np.ndarray = None     # (17, 2) COCO order, pixels — VideoPose3D input
+    coco_scores: np.ndarray = None
     world3d: np.ndarray = None    # (17, 3) H36M order, metres — MediaPipe only
 
 
@@ -52,7 +54,8 @@ class RTMPoseExtractor:
         i = int(np.argmax(scores.mean(axis=1)))   # most confident person
         h36m, hs = coco_to_h36m(kpts[i], scores[i])
         h, w = frame_bgr.shape[:2]
-        return Pose(h36m, hs, (w, h))
+        return Pose(h36m, hs, (w, h), coco2d=kpts[i].astype(np.float64),
+                    coco_scores=scores[i].astype(np.float64))
 
     def close(self):
         pass
@@ -115,9 +118,10 @@ class MediaPipeExtractor:
         vis = np.array([p.visibility if p.visibility is not None else 1.0 for p in lm])
         world = np.array([[p.x, p.y, p.z] for p in res.pose_world_landmarks[0]])
 
-        k2, s2 = mediapipe_to_h36m(xy, vis)
+        coco, coco_s = mediapipe_to_coco(xy, vis)
+        k2, s2 = coco_to_h36m(coco, coco_s)
         k3, _ = mediapipe_to_h36m(world)
-        return Pose(k2, s2, (w, h), world3d=k3)
+        return Pose(k2, s2, (w, h), coco2d=coco, coco_scores=coco_s, world3d=k3)
 
     def close(self):
         self.landmarker.close()

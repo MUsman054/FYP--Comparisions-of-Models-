@@ -5,8 +5,12 @@ mapping.py — convert 2D/3D keypoints to the H36M-17 format the lifters expect.
     MediaPipe : 33 landmarks  -> mediapipe_to_coco() -> coco_to_h36m()
 
 Both extractors go through the SAME COCO -> H36M step, so the comparison is fair.
-The COCO -> H36M rule follows MotionBERT's in-the-wild inference code,
-so the lifters get input in the convention they were run with.
+The COCO -> H36M rule is MotionBERT's own coco2h36m (lib/data/dataset_action.py).
+
+Who uses what:
+    VideoPose3D : COCO-17 directly (its in-the-wild checkpoint was trained on COCO input)
+    MotionBERT  : H36M-17 from coco_to_h36m()
+    angles.py   : H36M-17
 
 Works on a single frame (17, C) or a sequence (T, 17, C), C = 2 or 3.
 Left/right = the SUBJECT's left/right in all three formats.
