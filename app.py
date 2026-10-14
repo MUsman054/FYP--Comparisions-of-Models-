@@ -11,6 +11,8 @@ How to use:
     2. Sit upright, press Calibrate, hold still for 3 s (sets the 0° reference).
     3. Pick a label (the test pose), press Record, hold the pose, press Stop.
     4. Each recording session is saved to logs/ as CSV (see logger.py).
+    5. The 3D panel (view3d.py) shows the lifted pose with X/Y/Z axes; rotate it
+       with the sliders or the View presets ("Side" shows forward lean best).
 
 Design:
     - Camera + 2D extractor run in one thread, the lifter in another, so a slow
@@ -31,9 +33,10 @@ import numpy as np
 import pandas as pd
 
 from angles import ANGLE_JOINTS, ANGLE_NAMES, Calibrator, compute_angles, rula_segment_scores
-from extractors import EXTRACTORS, H36M_EDGES, draw_pose, load_extractor, open_camera
+from extractors import EXTRACTORS, draw_pose, load_extractor, open_camera
 from lifters import HISTORY_LEN, LIFTERS, is_compatible, load_lifter
 from logger import AngleLogger
+from view3d import PRESETS, View3D
 
 # ---------------------------------------------------------------------------
 # Settings
@@ -62,7 +65,8 @@ RULA_OF = {"trunk": "trunk", "neck": "neck",
            "l_upper_arm": "l_upper_arm", "r_upper_arm": "r_upper_arm",
            "l_elbow": "l_lower_arm", "r_elbow": "r_lower_arm"}
 
-GREEN, WHITE, GRAY, ORANGE = (0, 200, 0), (255, 255, 255), (150, 150, 150), (0, 165, 255)
+GREEN, WHITE, ORANGE = (0, 200, 0), (255, 255, 255), (0, 165, 255)
+DEFAULT_VIEW = "3/4"
 
 
 # ---------------------------------------------------------------------------
@@ -98,6 +102,9 @@ class Engine:
         self.label = LABELS[0]
         self.logger = None
         self.ended = False
+
+        self.view3d = View3D()                       # 3D panel renderer
+        self.az, self.el = PRESETS[DEFAULT_VIEW]
 
         self.running = True
         self.threads = [threading.Thread(target=self._capture_loop, daemon=True),
@@ -262,7 +269,7 @@ class Engine:
 
     # ---------------- drawing ----------------
     def _compose(self, frame):
-        """Webcam frame + trunk readout + 3D side-view inset. Returns RGB."""
+        """Webcam frame + trunk readout. Returns RGB."""
         img = frame.copy()
         h, w = img.shape[:2]
 
@@ -278,46 +285,16 @@ class Engine:
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, ORANGE, 2)
         if self.logger is not None:
             cv2.circle(img, (w - 20, 17), 8, (0, 0, 255), -1)      # recording dot
-
-        p3d = self.res3d.get("p3d")
-        if p3d is not None:
-            _draw_side_view(img, p3d, self.cal3d.up)
         return img[:, :, ::-1]
+
+    def render_3d(self):
+        """3D panel (RGB) with the newest lifted pose."""
+        p3d = self.res3d.get("p3d") if self.lifter is not None else None
+        return self.view3d.render(p3d, self.cal3d.up, self.az, self.el)
 
 
 def _fmt(x):
     return "  -  " if x is None or np.isnan(x) else f"{x:5.1f}°"
-
-
-def _draw_side_view(img, p3d, up, size=(170, 210)):
-    """
-    Inset at top-right: the 3D skeleton seen from the SIDE (depth z vs height y).
-    The camera is to the LEFT of the inset, so leaning toward the camera tilts
-    the body left here — exactly the motion the frontal 2D view cannot see.
-    Gray line = calibrated vertical.
-    """
-    pw, ph = size
-    h, w = img.shape[:2]
-    x0, y0 = w - pw - 10, 44
-    if x0 < 0 or y0 + ph > h:
-        return
-    roi = img[y0:y0 + ph, x0:x0 + pw]
-    roi[:] = (roi * 0.3).astype(np.uint8)
-    cv2.rectangle(img, (x0, y0), (x0 + pw, y0 + ph), WHITE, 1)
-    cv2.putText(img, "3D side view", (x0 + 6, y0 + 16), cv2.FONT_HERSHEY_SIMPLEX, 0.45, WHITE, 1)
-    cv2.putText(img, "<- camera", (x0 + 6, y0 + ph - 8), cv2.FONT_HERSHEY_SIMPLEX, 0.4, GRAY, 1)
-
-    trunk = np.linalg.norm(p3d[8] - p3d[0])
-    s = 55.0 / max(trunk, 1e-6)
-    cx, cy = x0 + pw // 2, y0 + int(ph * 0.62)
-
-    def pt(v):
-        return int(cx + s * v[2]), int(cy + s * v[1])     # horizontal = z (depth), vertical = y
-
-    end = up / max(np.linalg.norm(up), 1e-6) * trunk * 1.3
-    cv2.line(img, pt(np.zeros(3)), pt(end), GRAY, 1)
-    for a, b in H36M_EDGES:
-        cv2.line(img, pt(p3d[a]), pt(p3d[b]), ORANGE, 2)
 
 
 # ---------------------------------------------------------------------------
@@ -358,7 +335,14 @@ def build_ui(engine, ext_default, lift_default):
             lines.append("**Video ended.**")
         if engine.error:
             lines.append(f"⚠️ {engine.error}")
-        return engine.view, table, "  \n".join(lines)
+        return engine.view, engine.render_3d(), table, "  \n".join(lines)
+
+    def on_view(az, el):
+        engine.az, engine.el = az, el
+
+    def on_preset(name):
+        engine.az, engine.el = PRESETS[name]
+        return engine.az, engine.el
 
     def on_models(ext_name, lift_name):
         msg = engine.set_models(ext_name, lift_name)
@@ -380,9 +364,18 @@ def build_ui(engine, ext_default, lift_default):
     with gr.Blocks(title="2D vs 3D posture angles") as demo:
         gr.Markdown("## 2D vs 3D posture angles — live webcam")
         with gr.Row():
-            with gr.Column(scale=3):
-                video = gr.Image(label="Webcam (green = 2D joints, inset = 3D side view)",
-                                 type="numpy", format="jpeg", interactive=False)
+            with gr.Column(scale=4):
+                with gr.Row():
+                    video = gr.Image(label="Webcam (green = 2D joints)",
+                                     type="numpy", format="jpeg", interactive=False)
+                    pose3d = gr.Image(label="3D pose (X red, Y green, Z blue = toward webcam)",
+                                      type="numpy", format="jpeg", interactive=False)
+                with gr.Row():
+                    preset = gr.Radio(list(PRESETS), value=DEFAULT_VIEW, label="3D view")
+                    az_sl = gr.Slider(-180, 180, value=PRESETS[DEFAULT_VIEW][0], step=5,
+                                      label="Azimuth (rotate)")
+                    el_sl = gr.Slider(-10, 89, value=PRESETS[DEFAULT_VIEW][1], step=5,
+                                      label="Elevation (tilt)")
             with gr.Column(scale=2):
                 ext_dd = gr.Dropdown(list(EXTRACTORS), value=ext_default, label="2D extractor")
                 lift_dd = gr.Dropdown(lifter_choices, value=lift_default, label="3D lifter")
@@ -395,7 +388,10 @@ def build_ui(engine, ext_default, lift_default):
         table = gr.Dataframe(label="Angles (degrees) and RULA segment scores", interactive=False)
 
         timer = gr.Timer(0.1)
-        timer.tick(tick, outputs=[video, table, status], show_progress="hidden")
+        timer.tick(tick, outputs=[video, pose3d, table, status], show_progress="hidden")
+        az_sl.change(on_view, [az_sl, el_sl])
+        el_sl.change(on_view, [az_sl, el_sl])
+        preset.change(on_preset, preset, [az_sl, el_sl])
         ext_dd.change(on_models, [ext_dd, lift_dd], [msg, lift_dd])
         lift_dd.change(on_models, [ext_dd, lift_dd], [msg, lift_dd])
         calib_btn.click(on_calibrate, outputs=msg)
