@@ -14,6 +14,11 @@ CLI:      python compare.py --image data/panoptic/images/frame_00000120.jpg
           (GT is picked up automatically from gt_angles.csv in the image's parent folder)
 """
 
+import os
+
+os.environ.setdefault("GLOG_minloglevel", "2")      # silence MediaPipe's C++ warnings
+os.environ.setdefault("TF_CPP_MIN_LOG_LEVEL", "2")
+
 import argparse
 import csv
 from pathlib import Path
@@ -73,7 +78,7 @@ class Comparator:
     never carries over from one (unrelated) image to the next.
     """
 
-    def __init__(self, device="cpu", motionbert_window=81, fresh_mediapipe=True):
+    def __init__(self, device="cpu", motionbert_window=27, fresh_mediapipe=True):
         self.device = device
         self.mb_window = motionbert_window
         self.fresh_mediapipe = fresh_mediapipe
