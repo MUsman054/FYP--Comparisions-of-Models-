@@ -33,6 +33,8 @@ class Pose:
     coco2d: np.ndarray = None     # (17, 2) COCO order, pixels — VideoPose3D input
     coco_scores: np.ndarray = None
     world3d: np.ndarray = None    # (17, 3) H36M order, metres — MediaPipe only
+    world_ears: np.ndarray = None # (3,) ear midpoint, same frame as world3d — MediaPipe only,
+                                  # used as the head point for the neck angle (matches GT)
 
 
 # ---------------------------------------------------------------------------
@@ -66,6 +68,8 @@ class RTMPoseExtractor:
 # ---------------------------------------------------------------------------
 MP_URL = ("https://storage.googleapis.com/mediapipe-models/pose_landmarker/"
           "pose_landmarker_{v}/float16/latest/pose_landmarker_{v}.task")
+
+MP_L_EAR, MP_R_EAR = 7, 8
 
 
 def _ensure_mp_model(variant):
@@ -121,7 +125,8 @@ class MediaPipeExtractor:
         coco, coco_s = mediapipe_to_coco(xy, vis)
         k2, s2 = coco_to_h36m(coco, coco_s)
         k3, _ = mediapipe_to_h36m(world)
-        return Pose(k2, s2, (w, h), coco2d=coco, coco_scores=coco_s, world3d=k3)
+        return Pose(k2, s2, (w, h), coco2d=coco, coco_scores=coco_s, world3d=k3,
+                    world_ears=0.5 * (world[MP_L_EAR] + world[MP_R_EAR]))
 
     def close(self):
         self.landmarker.close()
