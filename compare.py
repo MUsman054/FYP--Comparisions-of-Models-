@@ -21,7 +21,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from angles import ANGLE_NAMES, compute_angles
+from angles import ANGLE_NAMES, HEAD, PELVIS, compute_angles
 from extractors import EXTRACTORS, draw_pose
 from lifters import load_lifter
 from rula import rula_from_angles
@@ -123,6 +123,10 @@ class Comparator:
                 if joints is None:
                     arms[arm] = None
                     continue
+                if lf == "MediaPipe 3D" and getattr(pose, "world_ears", None) is not None:
+                    # Same head definition as GT: ear midpoint, root-relative like the lifter output
+                    joints = joints.copy()
+                    joints[HEAD] = pose.world_ears - pose.world3d[PELVIS]
             ang = compute_angles(joints, conf=pose.scores)
             r = rula_from_angles(ang)
             res = {"angles": ang, "rula": r, "is_3d": lf is not None}
@@ -233,7 +237,9 @@ if __name__ == "__main__":
     result = comp.run(img, gt)
     print_table(result)
 
-    out = Path(args.image).with_name(Path(args.image).stem + "_compare.jpg")
+    # Saved outside the dataset folder so it never gets mixed in with the input images
+    out = Path("logs") / "compare" / (Path(args.image).stem + "_compare.jpg")
+    out.parent.mkdir(parents=True, exist_ok=True)
     cv2.imwrite(str(out), draw_overlay(img, result))
     print(f"\nOverlay saved: {out}  (green = RTMPose, magenta = MediaPipe)")
     comp.close()
