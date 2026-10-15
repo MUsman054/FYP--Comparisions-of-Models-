@@ -271,7 +271,7 @@ def main():
 
         coco = j19_cam[P19_TO_COCO]
         h36m, hconf = coco_to_h36m(coco[:, :3], coco[:, 3])
-        ang = compute_angles(h36m, conf=hconf)
+        ang = compute_angles(h36m)  # mocap GT: already filtered by frame_ok, no extra gating
 
         name = f"frame_{idx:08d}.jpg"
         cv2.imwrite(str(img_dir / name), frame, [cv2.IMWRITE_JPEG_QUALITY, 95])
